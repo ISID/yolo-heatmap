@@ -43,6 +43,17 @@ from utils.general import apply_classifier, check_img_size, check_imshow, check_
 from utils.plots import Annotator, colors
 from utils.torch_utils import load_classifier, select_device, time_sync
 
+
+#-----射影変換処理の前準備
+W, H = (1920, 1080) # 変換先の矩形
+# 変換前後の点を対応させる（左上から時計回りに指定する）
+pts1 = np.float32([[642,415],[1554,413],[1908,1027],[4.,934]])
+pts2 = np.float32([[0,0],[W,0],[W,H],[0,H]])
+
+# 射影変換行列
+M = cv2.getPerspectiveTransform(pts1, pts2)
+                    
+
 #-----
 def checkRect(center_point):
     feild_No = None
@@ -98,7 +109,6 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
    
-
     # Directories
     save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
@@ -168,20 +178,24 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     vid_path, vid_writer = [None] * bs, [None] * bs
 
     # Run inference
-
     if pt and device.type != 'cpu':
         model(torch.zeros(1, 3, *imgsz).to(device).type_as(next(model.parameters())))  # run once
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, img, im0s, vid_cap in dataset:
+
         t1 = time_sync()
         if onnx:
             img = img.astype('float32')
         else:
             img = torch.from_numpy(img).to(device)
             img = img.half() if half else img.float()  # uint8 to fp16/32
+
         img = img / 255.0  # 0 - 255 to 0.0 - 1.0
         if len(img.shape) == 3:
             img = img[None]  # expand for batch dim
+        
+
+
         t2 = time_sync()
         dt[0] += t2 - t1
 
@@ -270,10 +284,10 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
                     points = np.array([(x1, y1), (x2, y2), (x3, y3), (x4, y4)])
                     poly = cv2.polylines(im0, [points], True, (0,255,0))
-                    text_coord = cv2.putText(im0,str(feild+1),(x1,y1+30), cv2.FONT_HERSHEY_DUPLEX | cv2.FONT_ITALIC,1,(255,0,255))
                 #-----
 
                 # Write results
+                center_point_list = [] 
                 for *xyxy, conf, cls in reversed(det):
                     #-----
                     c1, c2 = (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3]))
@@ -281,7 +295,15 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                     circle = cv2.circle(im0,center_point,5,(0,255,0),2)
                     text_coord = cv2.putText(im0,str(checkRect(center_point)),center_point,cv2.FONT_HERSHEY_DUPLEX | cv2.FONT_ITALIC,3,(200,200,100), cv2.LINE_AA)
                     print('position:'+str(checkRect(center_point)))
-                    logfile.write('time:'+str(dt_now)+',position:'+str(checkRect(center_point))+"\n")
+
+                    #------物体検出の座標を射影変換
+                    px = (M[0][0]*center_point[0] + M[0][1]*center_point[1] + M[0][2]) / ((M[2][0]*center_point[0] + M[2][1]*center_point[1] + M[2][2]))
+                    py = (M[1][0]*center_point[0] + M[1][1]*center_point[1] + M[1][2]) / ((M[2][0]*center_point[0] + M[2][1]*center_point[1] + M[2][2]))
+                    p_after = (int(px), int(py))
+                    print('position_row:'+ str(center_point[0])+","+str(center_point[1]) + '/ position_Homography:' + str(p_after[0])+","+str(p_after[1])) 
+                    logfile.write('time:'+str(dt_now)+',position:'+str(checkRect(center_point))+ ',point:'+  ''.join(map(str,p_after)) +"\n")
+                    center_point_list.append(p_after)
+                    ##p_afterの値を送信すればOK?
                     #-----
 
                     if save_txt:  # Write to file
@@ -323,6 +345,11 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                             fps, w, h = 30, im0.shape[1], im0.shape[0]
                             save_path += '.mp4'
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+
+                    #画像の射影変換
+                    im0 = cv2.warpPerspective(im0, M, (W, H))
+                    for center_mono_point in center_point_list:
+                        center_mono = cv2.circle(im0,center_mono_point,15,(255,255,255),2)
                     vid_writer[i].write(im0)
 
     # Print results
