@@ -47,7 +47,10 @@ from utils.torch_utils import load_classifier, select_device, time_sync
 #-----射影変換処理の前準備
 W, H = (1920, 1080) # 変換先の矩形
 # 変換前後の点を対応させる（左上から時計回りに指定する）
-pts1 = np.float32([[642,415],[1554,413],[1908,1027],[4.,934]])
+pts1 = np.float32([[b_json_load[3]['points']['x'],b_json_load[3]['points']['y']],
+                    [b_json_load[15]['points']['x'],b_json_load[15]['points']['y']],
+                    [b_json_load[12]['points']['x'],b_json_load[12]['points']['y']],
+                    [b_json_load[0]['points']['x'],b_json_load[0]['points']['y']]])
 pts2 = np.float32([[0,0],[W,0],[W,H],[0,H]])
 
 # 射影変換行列
@@ -60,7 +63,6 @@ def checkRect(center_point):
     for feild in range(len(m_json_load)):
         polygon_point_list =[]
         for p in m_json_load[feild]['points']:
-            
             polygon_point_list.append(b_json_load[p-1]['points']['x'])
             polygon_point_list.append(b_json_load[p-1]['points']['y'])
 
@@ -69,7 +71,6 @@ def checkRect(center_point):
             (polygon_point_list[4],polygon_point_list[5]),
             (polygon_point_list[6],polygon_point_list[7])])
         position = polygon.contains(Point(center_point[0],center_point[1]))
-        #print(str(feild),str(position))
         if position:
             feild_No = feild+1
     return feild_No
