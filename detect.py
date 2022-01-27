@@ -45,7 +45,9 @@ from utils.torch_utils import load_classifier, select_device, time_sync
 
 
 #-----射影変換処理の前準備
+center_point_list = [] 
 W, H = (1920, 1080) # 変換先の矩形
+
 # 変換前後の点を対応させる（左上から時計回りに指定する）
 pts1 = np.float32([[b_json_load[3]['points']['x'],b_json_load[3]['points']['y']],
                     [b_json_load[15]['points']['x'],b_json_load[15]['points']['y']],
@@ -118,6 +120,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     #----
 
     # Initialize
+    center_point_list=[]
     set_logging()
     device = select_device(device)
     half &= device.type != 'cpu'  # half precision only supported on CUDA
@@ -288,7 +291,6 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                 #-----
 
                 # Write results
-                center_point_list = [] 
                 for *xyxy, conf, cls in reversed(det):
                     #-----
                     c1, c2 = (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3]))
@@ -326,8 +328,14 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
             # Stream results
             im0 = annotator.result()
             if view_img:
+                #画像の射影変換
+                im0 = cv2.warpPerspective(im0, M, (W, H))
+                for center_mono_point in center_point_list:
+                    center_mono = cv2.circle(im0,center_mono_point,15,(255,255,255),2)
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
+                center_point_list =[]
+                
 
             # Save results (image with detections)
             if save_img:
@@ -346,11 +354,6 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                             fps, w, h = 30, im0.shape[1], im0.shape[0]
                             save_path += '.mp4'
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-
-                    #画像の射影変換
-                    im0 = cv2.warpPerspective(im0, M, (W, H))
-                    for center_mono_point in center_point_list:
-                        center_mono = cv2.circle(im0,center_mono_point,15,(255,255,255),2)
                     vid_writer[i].write(im0)
 
     # Print results
