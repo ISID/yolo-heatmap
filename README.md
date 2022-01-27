@@ -8,6 +8,8 @@ The usage is the same as the original Yolo5.
 The added features and files from the original are as follows.
 - features
     - Define multiple polygon regions and determine if the object detected by yolo is inside the polygon region.
+    - Performs a projective transformation at a specified point.
+        - image size is only 1920x1080.
 - config file
     - basepoint_config.json
         - contains the coordinates of the points used to define the polygon.
