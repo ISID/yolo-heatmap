@@ -117,6 +117,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
     #----
     logfile = open(str(save_dir)+'/position_log.txt', 'w')
+    statsfile = open(str(save_dir)+'/stats_log.txt', 'w')
     #----
 
     # Initialize
@@ -186,7 +187,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         model(torch.zeros(1, 3, *imgsz).to(device).type_as(next(model.parameters())))  # run once
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, img, im0s, vid_cap in dataset:
-
+        statsfile.write('all_start:'+str(datetime.datetime.now())+"\n")
         t1 = time_sync()
         if onnx:
             img = img.astype('float32')
@@ -197,8 +198,6 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         img = img / 255.0  # 0 - 255 to 0.0 - 1.0
         if len(img.shape) == 3:
             img = img[None]  # expand for batch dim
-        
-
 
         t2 = time_sync()
         dt[0] += t2 - t1
@@ -247,7 +246,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
-            dt_now = datetime.datetime.now()
+            statsfile.write('predictions_start:'+str(datetime.datetime.now())+"\n")
             seen += 1
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], f'{i}: ', im0s[i].copy(), dataset.count
@@ -261,6 +260,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
             annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            statsfile.write('predictions_end:'+str(datetime.datetime.now())+"\n")
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -293,18 +293,22 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
                     #-----
+                    statsfile.write('plygon_detect_start:'+str(datetime.datetime.now())+"\n")
                     c1, c2 = (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3]))
                     center_point = round((c1[0]+c2[0])/2), round(c2[1])
                     circle = cv2.circle(im0,center_point,5,(0,255,0),2)
                     text_coord = cv2.putText(im0,str(checkRect(center_point)),center_point,cv2.FONT_HERSHEY_DUPLEX | cv2.FONT_ITALIC,3,(200,200,100), cv2.LINE_AA)
                     print('position:'+str(checkRect(center_point)))
+                    statsfile.write('plygon_detect_end:'+str(datetime.datetime.now())+"\n")
 
                     #------物体検出の座標を射影変換
+                    statsfile.write('homography_start:'+str(datetime.datetime.now())+"\n")
                     px = (M[0][0]*center_point[0] + M[0][1]*center_point[1] + M[0][2]) / ((M[2][0]*center_point[0] + M[2][1]*center_point[1] + M[2][2]))
                     py = (M[1][0]*center_point[0] + M[1][1]*center_point[1] + M[1][2]) / ((M[2][0]*center_point[0] + M[2][1]*center_point[1] + M[2][2]))
                     p_after = (int(px), int(py))
-                    print('position_row:'+ str(center_point[0])+","+str(center_point[1]) + '/ position_Homography:' + str(p_after[0])+","+str(p_after[1])) 
-                    logfile.write('time:'+str(dt_now)+',position:'+str(checkRect(center_point))+ ',point:'+  ''.join(map(str,p_after)) +"\n")
+                    print('position_row:'+ str(center_point[0])+","+str(center_point[1]) + '/ position_Homography:' + str(p_after[0])+","+str(p_after[1]))
+                    statsfile.write('homography_end:'+str(datetime.datetime.now())+"\n")
+                    logfile.write('time:'+str(datetime.datetime.now())+',position:'+str(checkRect(center_point))+ ',point:' +str(p_after[0])+","+str(p_after[1]) +"\n")
                     center_point_list.append(p_after)
                     ##p_afterの値を送信すればOK?
                     #-----
@@ -325,11 +329,14 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
             # Print time (inference-only)
             print(f'{s}Done. ({t3 - t2:.3f}s)')
 
+
             # Stream results
             im0 = annotator.result()
             if view_img:
                 #画像の射影変換
+                statsfile.write('homography_img_start:'+str(datetime.datetime.now())+"\n")
                 im0 = cv2.warpPerspective(im0, M, (W, H))
+                statsfile.write('homography_img_end:'+str(datetime.datetime.now())+"\n")
                 for center_mono_point in center_point_list:
                     center_mono = cv2.circle(im0,center_mono_point,15,(255,255,255),2)
                 cv2.imshow(str(p), im0)
@@ -339,6 +346,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
             # Save results (image with detections)
             if save_img:
+                statsfile.write('save_img_start:'+str(datetime.datetime.now())+"\n")
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
                 else:  # 'video' or 'stream'
@@ -355,6 +363,8 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                             save_path += '.mp4'
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
+                statsfile.write('save_img_end:'+str(datetime.datetime.now())+"\n")
+                statsfile.write('all_end:'+str(datetime.datetime.now())+"\n")
 
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
