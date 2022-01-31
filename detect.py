@@ -78,6 +78,23 @@ def checkRect(center_point):
     return feild_No
 #-----
 
+#---- add コートアプリ連携 ----
+import socketio
+
+board_json_open = open('whiteboard_config.json', 'r')
+board_json_load = json.load(board_json_open)
+
+sio = socketio.Client()
+
+@sio.event
+def connect():
+    print('connection established')
+
+@sio.event
+def disconnect():
+    print('disconnected from server')
+
+#--------------------------
 
 @torch.no_grad()
 def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
@@ -105,12 +122,18 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         hide_conf=False,  # hide confidences
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
+        whiteboard=False # add ホワイトボードアプリ連携有効化
         ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
+
+    if whiteboard:
+        #---- add ホワイトボードアプリ連携 ----
+        sio.connect(board_json_load['host'],socketio_path=board_json_load['path'])
+        #--------------------------
    
     # Directories
     save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
@@ -246,6 +269,11 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
+
+            #---- add ホワイトボードアプリ連携 ----
+            poslist = []
+            #----
+
             statsfile.write('predictions_start:'+str(datetime.datetime.now())+"\n")
             seen += 1
             if webcam:  # batch_size >= 1
@@ -313,6 +341,14 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                     ##p_afterの値を送信すればOK?
                     #-----
 
+                    #---- add ホワイトボードアプリ連携 ----
+                    if p_after != None:
+                        courtx = (px / W) / 2
+                        courty = py / H
+                        if courtx >= 0 and courtx <= 1 and courty >= 0 and courty <= 1:
+                            poslist.append({"X": courtx , "Y": courty})
+                    #----
+
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
@@ -366,6 +402,11 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                 statsfile.write('save_img_end:'+str(datetime.datetime.now())+"\n")
                 statsfile.write('all_end:'+str(datetime.datetime.now())+"\n")
 
+            #---- add ホワイトボードアプリ連携 ----
+            if whiteboard:            
+                sio.emit('position',json.dumps(poslist))
+            #--------------------------            
+
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
     print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
@@ -375,6 +416,10 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     if update:
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
 
+    #---- add ホワイトボードアプリ連携 ----
+    if whiteboard:
+        sio.disconnect()
+    #--------------------------
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -403,6 +448,7 @@ def parse_opt():
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--whiteboard', action='store_true', help='use Whiteboard app') # add ホワイトボードアプリ連携
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(FILE.stem, opt)
